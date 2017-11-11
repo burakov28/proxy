@@ -78,9 +78,11 @@ void ThreadPool::ThreadTask::operator()() {
     lock.unlock();
     lock.release();
 
+    FLOGI << "*********************************************";
     FLOGI << "Process task...";
     task();
     FLOGI << "Task was processed";
+    FLOGI << "#############################################\n";
   }
 
   FLOGI << "Stop Run Loop";

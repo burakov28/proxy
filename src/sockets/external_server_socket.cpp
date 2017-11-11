@@ -42,7 +42,6 @@ void ExternalServerSocket::OnIn() {
     Disconnect();
     return;
   }
-  flagOGI << message;
   parent_ptr_->ReceiveMessageFromExternalServer(message);
   return;
 }

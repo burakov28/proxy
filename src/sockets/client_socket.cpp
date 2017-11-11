@@ -21,6 +21,7 @@ using net_utils::HttpParser;
 namespace {
 
 const uint64_t kTimeoutForClientsIdleMs = 2000;
+const char kConstPortNumberString[] = "80";
 
 }  // namespace
 
@@ -44,7 +45,6 @@ void ClientSocket::OnIn() {
     return;
   }
   std::string host, port;
-  //FLOGI << message;
   switch (parser_.Append(message)) {
     case (HttpParser::AppendResult::ERROR):
       LOGE << "Request too large. Client: " << GetFD() << "; close connection";
@@ -95,7 +95,7 @@ void ClientSocket::CreateExternalServer(std::string host,
   int external_server_socket_fd =
       net_utils::CreateExternalServerSocket(
             host.c_str(),
-            (port != "") ? (port.c_str()) : ("80"));
+            (port != "") ? (port.c_str()) : (kConstPortNumberString));
   server_ptr->AddExternalServerToQueue(external_server_socket_fd, id);
 }
 
@@ -110,7 +110,6 @@ void ClientSocket::SetExternalServer(int external_server_socket_fd) {
                                GetEpollPtr(),
                                this));
   std::string req = parser_.GetNextRequest();
-  //FLOGI << req;
   external_server_ptr_->ReceiveMessageFromParent(req);
 }
 

@@ -20,8 +20,8 @@ namespace {
 
 const char kOldFileSuffix[] = "_old";
 const std::string kProjectFolder = "src/";
-const uint32_t kMaxTimesBeforeFlush = 1;  // 20;
-const uint64_t kMaxLogFileSize = 4 * 1024 * 1024;
+const uint32_t kMaxTimesBeforeFlush = 20;  // records before flushing;
+const uint64_t kMaxLogFileSize = 4 * 1024 * 1024;  // in bytes;
 
 std::string GetPathInProject(const std::string& path) {
   size_t pos = path.rfind(kProjectFolder);
@@ -129,7 +129,7 @@ std::unordered_map<std::thread::id,
                    std::shared_ptr<FileFlusher>> file_flushers_;
 
 std::unique_ptr<std::mutex> console_locker_(new std::mutex());
-std::unique_ptr<std::mutex> file_locker_(new std::mutex());
+std::unique_ptr<std::mutex> init_file_locker_(new std::mutex());
 
 const size_t kFileNameLength = 35;
 const size_t kLineNumberLength = 3;
@@ -184,7 +184,7 @@ LogMessage::~LogMessage() {
 }
 
 void InitFileLogger(const std::string& file) {
-  ScopedMutex scoped_mutex(file_locker_.get());
+  ScopedMutex scoped_mutex(init_file_locker_.get());
   file_flushers_[std::this_thread::get_id()] =
       std::make_shared<FileFlusher>(file);
   log_file_paths_[std::this_thread::get_id()] = file;
@@ -201,7 +201,7 @@ FileLogger::FileLogger(const char* filename, int line,
 void FileLogger::FlushMessage(const std::string& message) {
   std::shared_ptr<FileFlusher> flusher_ptr;
   if (true) {
-    ScopedMutex scoped_mutex(file_locker_.get());
+    ScopedMutex scoped_mutex(init_file_locker_.get());
     flusher_ptr = file_flushers_[std::this_thread::get_id()];
   }
   if (flusher_ptr == nullptr) {
