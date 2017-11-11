@@ -34,7 +34,7 @@ ClientSocket::ClientSocket(int fd, std::shared_ptr<Epoll> epoll_ptr,
 }
 
 ClientSocket::~ClientSocket() {
-  LOGI << "Client Socket was destroyed; fd: " << GetFD();
+  LOGI << "Client Socket is destroying; fd: " << GetFD();
 }
 
 void ClientSocket::OnIn() {
@@ -45,6 +45,9 @@ void ClientSocket::OnIn() {
     return;
   }
   std::string host, port;
+  ServerSocket* server_tmp_ptr;
+  uint64_t id_tmp;
+  uint32_t flags;
   switch (parser_.Append(message)) {
     case (HttpParser::AppendResult::ERROR):
       LOGE << "Request too large. Client: " << GetFD() << "; close connection";
@@ -54,25 +57,22 @@ void ClientSocket::OnIn() {
     case (HttpParser::AppendResult::READY_REQUEST):
       host = parser_.GetHost();
       port = parser_.GetPort();
-      if (host != external_host_ || port != external_port_) {
-        external_host_ = host;
-        external_port_ = port;
-        ServerSocket* server_tmp_ptr = server_ptr_;
-        uint64_t id_tmp = id_;
-        server_ptr_->GetThreadPoolPtr()->PostTask(
-            [host, port, server_tmp_ptr, id_tmp](){
-              ClientSocket::CreateExternalServer(host,
-                                                 port,
-                                                 server_tmp_ptr,
-                                                 id_tmp);
-            });
-        uint32_t flags = EpollRecord::GetFlags();
-        if (!EpollRecord::SetFlags(flags & (~EpollRecord::IN))) {
-          LOGE << "Error to remove IN flag from client after getting request; "
-               << "client: " << GetFD() << "; close connection";
-          Disconnect();
-          return;
-        }
+      current_request_ = parser_.GetNextRequest();
+      server_tmp_ptr = server_ptr_;
+      id_tmp = id_;
+
+      server_ptr_->GetThreadPoolPtr()->PostTask(
+          [host, port, server_tmp_ptr, id_tmp]() {
+            ClientSocket::CreateExternalServer(host,
+                                               port,
+                                               server_tmp_ptr,
+                                               id_tmp);
+          });
+      flags = EpollRecord::GetFlags();
+      if (!EpollRecord::SetFlags(flags & (~EpollRecord::IN))) {
+        LOGE << "Error to remove IN flag from client after getting request; "
+             << "client: " << GetFD() << "; close connection";
+        Disconnect();
       }
       return;
 
@@ -105,12 +105,16 @@ void ClientSocket::SetExternalServer(int external_server_socket_fd) {
     KillExternalServer();
     return;
   }
-  external_server_ptr_.reset(
-      new ExternalServerSocket(external_server_socket_fd,
-                               GetEpollPtr(),
-                               this));
-  std::string req = parser_.GetNextRequest();
-  external_server_ptr_->ReceiveMessageFromParent(req);
+  try {
+    external_server_ptr_.reset(
+        new ExternalServerSocket(external_server_socket_fd,
+                                 GetEpollPtr(),
+                                 this));
+  } catch (...) {
+    KillExternalServer();
+    return;
+  }
+  external_server_ptr_->ReceiveMessageFromParent(current_request_);
 }
 
 void ClientSocket::OnOut() {
@@ -150,6 +154,8 @@ void ClientSocket::Disconnect() {
 
 void ClientSocket::KillExternalServer() {
   external_server_ptr_.reset(nullptr);
+  current_request_ = "";
+
   uint32_t flags = EpollRecord::GetFlags();
   if (!EpollRecord::SetFlags(flags | EpollRecord::IN)) {
     LOGE << "Error to restore IN flag after kill external server; client: "

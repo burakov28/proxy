@@ -87,7 +87,7 @@ AdvancedTime& AdvancedTime::operator+=(const AdvancedTime& other) {
 
 AdvancedTime& AdvancedTime::operator-=(const AdvancedTime& other) {
   if (time_ms_ < other.time_ms_) {
-    FLOGE << "Try to substract great time from a small one";
+    LOGE << "Try to substract great time from a small one";
     throw std::out_of_range("Try to substract great time from a small one");
   }
   time_ms_ -= other.time_ms_;

@@ -105,7 +105,7 @@ void Epoll::Process() {
     if ((event.events & EPOLLERR) || (event.events & EPOLLHUP)) {
       LOGI << "Epoll error or hup for record: " << record_ptr->GetFD();
       record_ptr->OnError();
-      return;
+      continue;
     }
 
     LOGE << "Uncatched event: " << event.events

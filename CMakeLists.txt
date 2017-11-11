@@ -10,7 +10,7 @@ include_directories(src/base/time)
 include_directories(src/epoll)
 include_directories(src/sockets)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -O2 -Wall -g -pthread")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -O2 -Wall -pthread")
 
 set(SRC_LIST src/main.cpp)
 

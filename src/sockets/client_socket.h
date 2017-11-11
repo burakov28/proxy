@@ -40,6 +40,7 @@ class ClientSocket : public epoll::EpollRecord {
   net_utils::HttpParser parser_;
   std::unique_ptr<ExternalServerSocket> external_server_ptr_;
   uint64_t id_;
+  std::string current_request_;
   std::string external_host_;
   std::string external_port_;
 };
