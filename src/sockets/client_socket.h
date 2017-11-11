@@ -41,8 +41,6 @@ class ClientSocket : public epoll::EpollRecord {
   std::unique_ptr<ExternalServerSocket> external_server_ptr_;
   uint64_t id_;
   std::string current_request_;
-  std::string external_host_;
-  std::string external_port_;
 };
 
 }  // namespace sockets
