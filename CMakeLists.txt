@@ -10,7 +10,9 @@ include_directories(src/base/time)
 include_directories(src/epoll)
 include_directories(src/sockets)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -O2 -Wall -pthread")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++14 -O0 -g -fsanitize=address,undefined -fno-sanitize-recover -fstack-protector -fpermissive -Wall -Wextra -Wshadow -pthread")
+
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=c++14 -O2 -Wall -pthread")
 
 set(SRC_LIST src/main.cpp)
 

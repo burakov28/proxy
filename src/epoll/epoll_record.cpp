@@ -52,6 +52,19 @@ bool EpollRecord::SetFlags(uint32_t new_flags) {
   return ret;
 }
 
+bool EpollRecord::AddFlag(uint32_t flag) {
+  uint32_t flags = GetFlags();
+  if (flags & flag)
+    return true;
+  return SetFlags(flags | flag);
+}
+
+bool EpollRecord::RemoveFlag(uint32_t flag) {
+  uint32_t flags = GetFlags();
+  flags = (flags & (~flag));
+  return SetFlags(flags);
+}
+
 bool EpollRecord::ResetDeadline() {
   expiration_time_ = AdvancedTime::Now() + timeout_;
   bool ret = epoll_ptr_->UpdateRecord(this);

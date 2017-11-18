@@ -17,7 +17,7 @@ using epoll::EpollRecord;
 
 namespace {
 
-const uint64_t kTimeoutForExternalServerIdleMs = 20000;
+const uint64_t kTimeoutForExternalServerIdleMs = 2000;
 
 }  // namespace
 

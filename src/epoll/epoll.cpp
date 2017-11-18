@@ -153,6 +153,7 @@ bool Epoll::UpdateRecord(EpollRecord* record_ptr) {
 bool Epoll::UnsubscribeRecord(EpollRecord* record_ptr) {
   timer_container_.Erase(in_container_[record_ptr]);
   in_container_.erase(record_ptr);
+  deleted_records_.insert(record_ptr);
   if (::epoll_ctl(GetFD(), EPOLL_CTL_DEL, record_ptr->GetFD(), NULL) < 0) {
     LOGE << "Error to delete record from epoll. fd: " << record_ptr->GetFD();
     return false;

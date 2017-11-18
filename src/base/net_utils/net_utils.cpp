@@ -63,11 +63,15 @@ int CreateServerSocket(uint16_t port, uint32_t s_addr) {
                sizeof(::sockaddr_in)) < 0) {
       LOGE << "Error to bind server socket: " << socket_fd
            << ". Attempt: " << i + 1 << " failed!";
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(kSleepBeforeNextAttemptMs));
       continue;
     }
 
     if (::listen(socket_fd, 128) < 0) {
       LOGE << "Error to start to listen. Attempt: " << i + 1 << " failed!";
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(kSleepBeforeNextAttemptMs));
       continue;
     }
 
@@ -80,7 +84,7 @@ int CreateServerSocket(uint16_t port, uint32_t s_addr) {
 
 int AcceptNonblocking(int server_fd) {
   ::sockaddr_in addr;
-  ::socklen_t addr_len;
+  ::socklen_t addr_len = 0;
   int client_fd = ::accept4(server_fd,
                             (::sockaddr*) (&addr),
                             &addr_len,
@@ -119,10 +123,6 @@ bool RemoveFileDescriptorFlags(int fd, int flags) {
   return true;
 }
 
-void DeleterForAddrInfo(::addrinfo* ptr) noexcept {
-  ::freeaddrinfo(ptr);
-}
-
 int CreateExternalServerSocket(const char* host_name, const char* port) {
   FLOGI << "Resolve name: " << host_name
         << "; port: " << port;
@@ -130,9 +130,7 @@ int CreateExternalServerSocket(const char* host_name, const char* port) {
   memset(&hints, 0, sizeof(::addrinfo));
   hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
-  ::addrinfo* result;
-  std::unique_ptr<::addrinfo, void (*)(::addrinfo*) noexcept>
-      scoped_result(result, &DeleterForAddrInfo);
+  ::addrinfo* result = nullptr;
   if (::getaddrinfo(host_name, port, &hints, &result) != 0) {
     FLOGE << "Couldn't resolve host name: " << host_name << ":" << port;
     return -1;
@@ -168,8 +166,10 @@ int CreateExternalServerSocket(const char* host_name, const char* port) {
           << " port: " << ((port) ? (port) : (""))
           << ". By IP: " << inet_ntoa(((::sockaddr_in*) p->ai_addr)->sin_addr);
     scoped_socket.Release();
+    ::freeaddrinfo(result);
     return socket_fd;
   }
+  ::freeaddrinfo(result);
 
   FLOGE << "Error to connect to any address: " << host_name
         << "; port: " << ((port) ? (port) : (""));

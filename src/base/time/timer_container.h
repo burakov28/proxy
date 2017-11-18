@@ -4,8 +4,11 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <set>
 
 #include "advanced_time.h"
+#include "logger.h"
+#include "terminal_error.h"
 
 namespace base {
 
@@ -14,95 +17,81 @@ class TimerContainer {
  private:
   typedef std::list<std::pair<AdvancedTime, T>> List;
   typedef std::shared_ptr<List> ListPtr;
-  typedef std::multimap<AdvancedTime, ListPtr> MultiMap;
-  typedef std::map<AdvancedTime, typename MultiMap::iterator>
-      MapTimeoutsToPosInMultiMap;
-  typedef std::map<ListPtr, AdvancedTime> MapListsToTimeouts;
-
+  typedef std::pair<ListPtr, AdvancedTime> ListPtrTimeout;
+  typedef std::set<ListPtrTimeout, bool(*)(const ListPtrTimeout&,
+                                           const ListPtrTimeout&)> SetForLists;
+  typedef std::map<AdvancedTime, typename SetForLists::iterator>
+                                                            SetItByTimeout;
  public:
   class Iterator {
    public:
-    Iterator() {}
+    Iterator() = default;
+    Iterator(const AdvancedTime& timeout,
+             const typename List::iterator& list_it) :
+                timeout_(timeout),
+                list_it_(list_it) {}
+    Iterator(const Iterator& other) = default;
 
-    Iterator(const typename List::iterator& list_it,
-      const typename MapTimeoutsToPosInMultiMap::const_iterator& timeout_it) :
-                list_it_(list_it), timeout_it_(timeout_it) {}
+    ~Iterator() = default;
 
-    Iterator(const Iterator& other) : list_it_(other.list_it_),
-                                      timeout_it_(other.timeout_it_) {}
-
-    const AdvancedTime& GetTimeout() const {
-      return timeout_it_->first;
+    AdvancedTime GetTimeout() const {
+      return timeout_;
     }
 
-    const T& GetValue() const {
+    T GetValue() const {
       return list_it_->second;
     }
 
-    const AdvancedTime& GetExpirationTime() const {
+    AdvancedTime GetExpirationTime() const {
       return list_it_->first;
     }
 
    private:
-    ListPtr GetListPtr() const {
-      return timeout_it_->second->second;
+    typename List::iterator GetListIterator() const {
+      return list_it_;
     }
 
-    friend TimerContainer;
+    friend class TimerContainer;
 
+    AdvancedTime timeout_;
     typename List::iterator list_it_;
-    typename MapTimeoutsToPosInMultiMap::const_iterator timeout_it_;
   };
 
-  Iterator Insert(const T& value, AdvancedTime timeout,
-                  AdvancedTime expiration_time = AdvancedTime::Now()) {
-    ListPtr list_ptr;
-    typename List::iterator list_it;
-    typename MapTimeoutsToPosInMultiMap::iterator timeout_it;
+  TimerContainer() : sorted_lists_(&ListsComparator) {}
+  ~TimerContainer() {}
 
-    auto it = timeouts_in_multimap_.find(timeout);
-    if (it == timeouts_in_multimap_.end()) {
+  Iterator Insert(const T& value, const AdvancedTime& timeout,
+                                  const AdvancedTime& expiration_time) {
+    ListPtrTimeout cur;
+    typename List::iterator list_it;
+    auto it = iterators_by_timeouts_.find(timeout);
+    if (it == iterators_by_timeouts_.end()) {
       ListPtr list_ptr = std::make_shared<List>();
       list_it = list_ptr->insert(list_ptr->end(), {expiration_time, value});
-      timeouts_by_lists_[list_ptr] = timeout;
-      timeout_it = timeouts_in_multimap_.insert({
-          timeout,
-          lists_sorted_by_expiration_time_.insert({expiration_time,
-                                                   list_ptr})}).first;
+      cur = {list_ptr, timeout};
     } else {
-      list_ptr = it->second->second;
-      list_it = list_ptr->insert(list_ptr->end(), {expiration_time, value});
-      timeout_it = it;
+      cur = *(it->second);
+      sorted_lists_.erase(it->second);
+      iterators_by_timeouts_.erase(it);
+      list_it = cur.first->insert(cur.first->end(), {expiration_time, value});
     }
-    return Iterator(list_it, timeout_it);
+
+    iterators_by_timeouts_[timeout] = sorted_lists_.insert(cur).first;
+    return Iterator(timeout, list_it);
   }
 
   void Erase(const Iterator& it) {
-    ListPtr list_ptr = it.GetListPtr();
     AdvancedTime timeout = it.GetTimeout();
-
-    if (it.list_it_ != list_ptr->begin()) {
-      list_ptr->erase(it.list_it_);
+    auto list_it = it.GetListIterator();
+    auto sorted_lists_it = iterators_by_timeouts_[timeout];
+    ListPtrTimeout cur = *(sorted_lists_it);
+    iterators_by_timeouts_.erase(timeout);
+    sorted_lists_.erase(sorted_lists_it);
+    cur.first->erase(list_it);
+    if (cur.first->empty()) {
       return;
     }
-
-    list_ptr->erase(it.list_it_);
-    lists_sorted_by_expiration_time_.erase(it.timeout_it_->second);
-    timeouts_in_multimap_.erase(timeout);
-    if (list_ptr->size() == 0) {
-      timeouts_by_lists_.erase(list_ptr);
-      return;
-    }
-    timeouts_in_multimap_[timeout] =
-        lists_sorted_by_expiration_time_.insert({list_ptr->front().first,
-                                                 list_ptr});
-  }
-
-  Iterator GetNext() const {
-    ListPtr list_ptr = lists_sorted_by_expiration_time_.begin()->second;
-    auto list_it = list_ptr->begin();
-    AdvancedTime timeout = timeouts_by_lists_.at(list_ptr);
-    return Iterator(list_it, timeouts_in_multimap_.find(timeout));
+    iterators_by_timeouts_[timeout] = sorted_lists_.insert(cur).first;
   }
 
   Iterator Update(const Iterator& it, AdvancedTime new_start_time =
@@ -113,14 +102,37 @@ class TimerContainer {
     return Insert(value, timeout, new_start_time + timeout);
   }
 
+  Iterator GetNext() const {
+    if (IsEmpty()) {
+      LOGE << "Timer Container is empty. Cannot retrieve next element";
+      throw TerminalError();
+    }
+    auto it = sorted_lists_.begin();
+    return Iterator(it->second, it->first->begin());
+  }
+
   bool IsEmpty() const {
-    return lists_sorted_by_expiration_time_.empty();
+    return iterators_by_timeouts_.empty();
   }
 
  private:
-  MultiMap lists_sorted_by_expiration_time_;
-  MapTimeoutsToPosInMultiMap timeouts_in_multimap_;
-  MapListsToTimeouts timeouts_by_lists_;
+  static bool ListsComparator(const ListPtrTimeout& lp1,
+                              const ListPtrTimeout& lp2) {
+    if (lp1.first->empty() || lp2.first->empty()) {
+      LOGE << "There is empty list it Timer Container";
+      throw TerminalError();
+    }
+    if (lp1.first->front().first < lp2.first->front().first) {
+      return true;
+    }
+    if (lp1.first->front().first > lp2.first->front().first) {
+      return false;
+    }
+    return lp1.first < lp2.first;
+  }
+
+  SetForLists sorted_lists_;
+  SetItByTimeout iterators_by_timeouts_;
 };
 
 }  // namespace base

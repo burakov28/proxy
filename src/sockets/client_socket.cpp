@@ -44,10 +44,9 @@ void ClientSocket::OnIn() {
     Disconnect();
     return;
   }
-  std::string host, port;
+  std::string host, port, new_request;
   ServerSocket* server_tmp_ptr;
   uint64_t id_tmp;
-  uint32_t flags;
   switch (parser_.Append(message)) {
     case (HttpParser::AppendResult::ERROR):
       LOGE << "Request too large. Client: " << GetFD() << "; close connection";
@@ -60,7 +59,6 @@ void ClientSocket::OnIn() {
       current_request_ = parser_.GetNextRequest();
       server_tmp_ptr = server_ptr_;
       id_tmp = id_;
-
       server_ptr_->GetThreadPoolPtr()->PostTask(
           [host, port, server_tmp_ptr, id_tmp]() {
             ClientSocket::CreateExternalServer(host,
@@ -68,11 +66,10 @@ void ClientSocket::OnIn() {
                                                server_tmp_ptr,
                                                id_tmp);
           });
-      flags = EpollRecord::GetFlags();
-      if (!EpollRecord::SetFlags(flags & (~EpollRecord::IN))) {
-        LOGE << "Error to remove IN flag from client after getting request; "
-             << "client: " << GetFD() << "; close connection";
+      if (!EpollRecord::RemoveFlag(EpollRecord::IN)) {
+        LOGE << "Error to remove IN flag. Fd: " << GetFD();
         Disconnect();
+        return;
       }
       return;
 
@@ -115,6 +112,7 @@ void ClientSocket::SetExternalServer(int external_server_socket_fd) {
     return;
   }
   external_server_ptr_->ReceiveMessageFromParent(current_request_);
+  current_request_ = "";
 }
 
 void ClientSocket::OnOut() {
@@ -129,8 +127,7 @@ void ClientSocket::OnOut() {
     return;
   }
   if (IOFileDescriptor::IsEmpty()) {
-    uint32_t flags = EpollRecord::GetFlags();
-    if (!EpollRecord::SetFlags(flags & (~EpollRecord::OUT))) {
+    if (!EpollRecord::RemoveFlag(EpollRecord::OUT)) {
       LOGE << "Error to remove OUT flag from client after buffer became empty"
            << "; client: " << GetFD() << "; close connection";
       Disconnect();
@@ -174,7 +171,7 @@ void ClientSocket::ReceiveMessageFromExternalServer(const std::string& data) {
   if (flags & EpollRecord::OUT) {
     return;
   }
-  if (!EpollRecord::SetFlags(flags | EpollRecord::OUT)) {
+  if (!EpollRecord::AddFlag(EpollRecord::OUT)) {
     LOGE << "Error to change flags after receiving message; client: "
          << GetFD() << "; close connection";
   }

@@ -32,6 +32,9 @@ class EpollRecord : public base::IOFileDescriptor {
   bool ResetDeadline();
   bool SetFlags(uint32_t new_flags);
 
+  bool AddFlag(uint32_t flag);
+  bool RemoveFlag(uint32_t flag);
+
   virtual void OnIn() = 0;
   virtual void OnOut() = 0;
   virtual void OnTimeExpired() = 0;
