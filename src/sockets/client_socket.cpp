@@ -20,7 +20,7 @@ using net_utils::HttpParser;
 
 namespace {
 
-const uint64_t kTimeoutForClientsIdleMs = 2000;
+const uint64_t kTimeoutForClientsIdleMs = 60000;
 const char kConstPortNumberString[] = "80";
 
 }  // namespace
@@ -29,7 +29,7 @@ ClientSocket::ClientSocket(int fd, std::shared_ptr<Epoll> epoll_ptr,
                            ServerSocket* server_ptr, uint64_t id) :
     EpollRecord(fd, epoll_ptr, EpollRecord::IN,
                 AdvancedTime::FromMilliseconds(kTimeoutForClientsIdleMs)),
-    server_ptr_(server_ptr), id_(id) {
+    server_ptr_(server_ptr), id_(id), is_disconnect_on_send_(false) {
   LOGI << "Client Socket was created; fd: " << GetFD();
 }
 
@@ -44,7 +44,7 @@ void ClientSocket::OnIn() {
     Disconnect();
     return;
   }
-  std::string host, port, new_request;
+  std::string host, port;
   ServerSocket* server_tmp_ptr;
   uint64_t id_tmp;
   switch (parser_.Append(message)) {
@@ -56,7 +56,6 @@ void ClientSocket::OnIn() {
     case (HttpParser::AppendResult::READY_REQUEST):
       host = parser_.GetHost();
       port = parser_.GetPort();
-      current_request_ = parser_.GetNextRequest();
       server_tmp_ptr = server_ptr_;
       id_tmp = id_;
       server_ptr_->GetThreadPoolPtr()->PostTask(
@@ -111,8 +110,10 @@ void ClientSocket::SetExternalServer(int external_server_socket_fd) {
     KillExternalServer();
     return;
   }
-  external_server_ptr_->ReceiveMessageFromParent(current_request_);
-  current_request_ = "";
+
+  parser_.ModifyHeader();
+
+  external_server_ptr_->ReceiveMessageFromParent(parser_.GetRequest());
 }
 
 void ClientSocket::OnOut() {
@@ -132,6 +133,10 @@ void ClientSocket::OnOut() {
            << "; client: " << GetFD() << "; close connection";
       Disconnect();
     }
+
+    if (is_disconnect_on_send_) {
+      Disconnect();
+    }
   }
 }
 
@@ -149,15 +154,24 @@ void ClientSocket::Disconnect() {
   server_ptr_->KillClient(id_);
 }
 
+void ClientSocket::DisconnectOnSend() {
+  if (IOFileDescriptor::IsEmpty()) {
+    Disconnect();
+    return;
+  }
+
+  is_disconnect_on_send_ = true;
+}
+
 void ClientSocket::KillExternalServer() {
   external_server_ptr_.reset(nullptr);
-  current_request_ = "";
 
   uint32_t flags = EpollRecord::GetFlags();
   if (!EpollRecord::SetFlags(flags | EpollRecord::IN)) {
     LOGE << "Error to restore IN flag after kill external server; client: "
          << GetFD() << "; close connection";
   }
+  DisconnectOnSend();
 }
 
 void ClientSocket::ReceiveMessageFromExternalServer(const std::string& data) {

@@ -6,6 +6,7 @@
 #include "client_socket.h"
 #include "epoll.h"
 #include "epoll_record.h"
+#include "http_parser.h"
 #include "logger.h"
 
 namespace sockets {
@@ -14,10 +15,11 @@ using base::AdvancedTime;
 using base::IOFileDescriptor;
 using epoll::Epoll;
 using epoll::EpollRecord;
+using net_utils::HttpParser;
 
 namespace {
 
-const uint64_t kTimeoutForExternalServerIdleMs = 2000;
+const uint64_t kTimeoutForExternalServerIdleMs = 60000;
 
 }  // namespace
 
@@ -26,7 +28,8 @@ ExternalServerSocket::ExternalServerSocket(int fd,
                                            ClientSocket* parent_ptr) :
     EpollRecord(fd, epoll_ptr, EpollRecord::IN,
             AdvancedTime::FromMilliseconds(kTimeoutForExternalServerIdleMs)),
-    parent_ptr_(parent_ptr) {
+    parent_ptr_(parent_ptr),
+    parser_(false) {
   LOGI << "External Server was created; fd: " << GetFD();
 }
 
@@ -43,7 +46,6 @@ void ExternalServerSocket::OnIn() {
     return;
   }
   parent_ptr_->ReceiveMessageFromExternalServer(message);
-  return;
 }
 
 void ExternalServerSocket::OnOut() {

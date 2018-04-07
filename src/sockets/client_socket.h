@@ -26,6 +26,7 @@ class ClientSocket : public epoll::EpollRecord {
   void OnError() override;
 
   void Disconnect();
+  void DisconnectOnSend();
 
   static void CreateExternalServer(std::string host,
                                    std::string port,
@@ -40,7 +41,7 @@ class ClientSocket : public epoll::EpollRecord {
   net_utils::HttpParser parser_;
   std::unique_ptr<ExternalServerSocket> external_server_ptr_;
   uint64_t id_;
-  std::string current_request_;
+  bool is_disconnect_on_send_;
 };
 
 }  // namespace sockets

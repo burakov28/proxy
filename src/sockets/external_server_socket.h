@@ -6,6 +6,7 @@
 
 #include "epoll.h"
 #include "epoll_record.h"
+#include "http_parser.h"
 
 namespace sockets {
 
@@ -28,6 +29,7 @@ class ExternalServerSocket : public epoll::EpollRecord {
 
  private:
   ClientSocket* const parent_ptr_;
+  net_utils::HttpParser parser_;
 };
 
 }  // namespace sockets
